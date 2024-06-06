@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# Latest stable versions as of 6th June 2024
 KERNEL_VERSION=6.9
 BUSYBOX_VERSION=1.36.1
 
@@ -24,6 +25,7 @@ configure_and_build_busybox() {
   cd busybox-$BUSYBOX_VERSION
   mkdir -p $TOP_DIR/build/busybox
   make O=$TOP_DIR/build/busybox defconfig
+  # Enable static build, so we don't need to worry about shared libraries
   sed -i 's/# CONFIG_STATIC is not set/CONFIG_STATIC=y/' $TOP_DIR/build/busybox/.config
   cd $TOP_DIR/build/busybox
   make -j2
@@ -53,6 +55,7 @@ EOF
 
 generate_initramfs() {
   cd $TOP_DIR/build/initramfs/busybox
+  # Find all files and directories and create a cpio archive to be used as the initramfs
   find . -print0 | cpio --null -ov --format=newc | gzip -9 > $TOP_DIR/build/initramfs-busybox-x86.cpio.gz
 }
 
@@ -65,6 +68,9 @@ configure_and_build_kernel() {
 
 execute_qemu_virtual_machine() {
   cd $TOP_DIR
+  # Run the kernel with the initramfs. Have not enabled kvm, so it will be slower
+  # but it will work without root permissions.
+  # To enable it, add -enable-kvm
   qemu-system-x86_64 \
     -kernel build/linux-simple/arch/x86_64/boot/bzImage \
     -initrd build/initramfs-busybox-x86.cpio.gz \
