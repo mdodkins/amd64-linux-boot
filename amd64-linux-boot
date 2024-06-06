@@ -1,0 +1,82 @@
+#!/bin/bash
+
+KERNEL_VERSION=6.9
+BUSYBOX_VERSION=1.36.1
+
+KERNEL_URL=https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-$KERNEL_VERSION.tar.gz
+BUSYBOX_URL=https://busybox.net/downloads/busybox-$BUSYBOX_VERSION.tar.bz2
+
+TOP_DIR=$(pwd)
+
+download_kernel_source() {
+  wget $KERNEL_URL
+  tar -xvf linux-$KERNEL_VERSION.tar.gz
+  rm linux-$KERNEL_VERSION.tar.gz
+}
+
+download_busybox() {
+  wget $BUSYBOX_URL
+  tar -xvf busybox-$BUSYBOX_VERSION.tar.bz2
+  rm busybox-$BUSYBOX_VERSION.tar.bz2
+}
+
+configure_and_build_busybox() {
+  cd busybox-$BUSYBOX_VERSION
+  mkdir -p $TOP_DIR/build/busybox
+  make O=$TOP_DIR/build/busybox defconfig
+  sed -i 's/# CONFIG_STATIC is not set/CONFIG_STATIC=y/' $TOP_DIR/build/busybox/.config
+  cd $TOP_DIR/build/busybox
+  make -j2
+  make install
+}
+
+create_minimal_filesystem() {
+  mkdir -p $TOP_DIR/build/initramfs/busybox
+  cd $TOP_DIR/build/initramfs/busybox
+  mkdir -pv {bin,sbin,etc,proc,sys,usr/{bin,sbin}}
+  cp -av $TOP_DIR/build/busybox/_install/* .
+}
+
+configure_init_script() {
+  cat << 'EOF' > "$TOP_DIR/build/initramfs/busybox/init"
+#!/bin/sh
+
+mount -t proc none /proc
+mount -t sysfs none /sys
+
+echo -e "\nhello world\n"
+
+exec /bin/sh
+EOF
+  chmod +x $TOP_DIR/build/initramfs/busybox/init
+}
+
+generate_initramfs() {
+  cd $TOP_DIR/build/initramfs/busybox
+  find . -print0 | cpio --null -ov --format=newc | gzip -9 > $TOP_DIR/build/initramfs-busybox-x86.cpio.gz
+}
+
+configure_and_build_kernel() {
+  cd $TOP_DIR/linux-$KERNEL_VERSION
+  make O=$TOP_DIR/build/linux-simple x86_64_defconfig
+  make O=$TOP_DIR/build/linux-simple kvmconfig
+  make O=$TOP_DIR/build/linux-simple -j2
+}
+
+execute_qemu_virtual_machine() {
+  cd $TOP_DIR
+  qemu-system-x86_64 \
+    -kernel build/linux-simple/arch/x86_64/boot/bzImage \
+    -initrd build/initramfs-busybox-x86.cpio.gz \
+    -nographic -append "console=ttyS0" \
+    -enable-kvm
+}
+
+download_kernel_source
+download_busybox
+configure_and_build_busybox
+create_minimal_filesystem
+configure_init_script
+generate_initramfs
+configure_and_build_kernel
+execute_qemu_virtual_machine

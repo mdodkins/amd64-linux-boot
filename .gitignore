@@ -1,0 +1,4 @@
+build/
+busybox-*
+linux-*
+*.swp
