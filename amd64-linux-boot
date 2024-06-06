@@ -68,8 +68,7 @@ execute_qemu_virtual_machine() {
   qemu-system-x86_64 \
     -kernel build/linux-simple/arch/x86_64/boot/bzImage \
     -initrd build/initramfs-busybox-x86.cpio.gz \
-    -nographic -append "console=ttyS0" \
-    -enable-kvm
+    -nographic -append "console=ttyS0"
 }
 
 download_kernel_source
