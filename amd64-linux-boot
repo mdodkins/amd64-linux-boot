@@ -45,10 +45,77 @@ configure_init_script() {
 
 mount -t proc none /proc
 mount -t sysfs none /sys
+mount -t devtmpfs devtmpfs /dev
+
+# Set up mdev for device management
+mdev -s
+
+# Check if /dev/sda1 exists, if not, partition and format the disk
+if [ ! -b /dev/sda1 ]; then
+  echo "Partitioning the disk"
+  fdisk /dev/sda << EOFFDISK
+o
+n
+p
+1
+
+
+w
+EOFFDISK
+fi
+
+# Check for existing filesystem
+FILESYSTEM=$(blkid -o value -s TYPE /dev/sda1)
+
+if [ -z "$FILESYSTEM" ]; then
+  echo "Creating filesystem on /dev/sda1"
+  /sbin/mke2fs /dev/sda1
+else
+  echo "Filesystem already exists on /dev/sda1: $FILESYSTEM"
+fi
+
+mkdir /mnt
+mount /dev/sda1 /mnt
+
+# Create essential directories
+
+if [ -z "$FILESYSTEM" ]; then
+  mkdir /mnt/bin
+  mkdir /mnt/sbin
+  mkdir /mnt/etc
+  mkdir /mnt/proc
+  mkdir /mnt/sys
+  mkdir /mnt/dev
+  mkdir /mnt/lib
+  mkdir -p /mnt/usr/bin
+  mkdir -p /mnt/usr/sbin
+
+
+  # Copy BusyBox and create symlinks for common utilities
+  cp /bin/busybox /mnt/bin/
+  for applet in $(/bin/busybox --list); do
+    ln -s /bin/busybox /mnt/bin/$applet
+  done
+
+  # Copy the BusyBox init binary
+  cp /bin/busybox /mnt/sbin/init
+
+  # Create a basic inittab
+  cat << 'EOFINITTAB' > /mnt/etc/inittab
+  ::sysinit:/bin/mount -t proc proc /proc
+  ::sysinit:/bin/mount -t sysfs sysfs /sys
+  ::sysinit:/bin/mount -t devtmpfs devtmpfs /dev
+
+  ::respawn:/bin/sh
+  ::askfirst:/bin/sh
+  ::ctrlaltdel:/bin/umount -a -r
+  ::shutdown:/bin/umount -a -r
+EOFINITTAB
+fi
 
 echo -e "\nhello world\n"
-
 exec /bin/sh
+
 EOF
   chmod +x $TOP_DIR/build/initramfs/busybox/init
 }
@@ -74,9 +141,20 @@ execute_qemu_virtual_machine() {
   qemu-system-x86_64 \
     -kernel build/linux-simple/arch/x86_64/boot/bzImage \
     -initrd build/initramfs-busybox-x86.cpio.gz \
-    -nographic -append "console=ttyS0"
+    -drive file=emudisk.qcow2,format=qcow2 \
+    -append "root=/dev/sda console=ttyS0" \
+    -nographic
 }
 
+create_emulated_disk_if_it_doesnt_exist() {
+    if [ ! -f emudisk.qcow2 ]; then
+        qemu-img create -f qcow2 emudisk.qcow2 512M 
+    else
+        echo "emudisk.qcow2 already exists"
+    fi
+}
+
+create_emulated_disk_if_it_doesnt_exist
 download_kernel_source
 download_busybox
 configure_and_build_busybox
@@ -85,3 +163,4 @@ configure_init_script
 generate_initramfs
 configure_and_build_kernel
 execute_qemu_virtual_machine
+
