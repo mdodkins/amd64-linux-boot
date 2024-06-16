@@ -169,11 +169,14 @@ create_emulated_disk_if_it_doesnt_exist() {
     fi
 }
 
-
-download_kernel_source
-download_busybox
-configure_and_build_busybox
-configure_and_build_kernel
+# Only do this first section if there wasn't an argument passed to this 
+# script "skip"
+if [ "$1" != "skip" ]; then
+  download_kernel_source
+  download_busybox
+  configure_and_build_busybox
+  configure_and_build_kernel
+fi
 
 create_emulated_disk_if_it_doesnt_exist
 create_minimal_filesystem
