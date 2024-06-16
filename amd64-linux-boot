@@ -40,15 +40,28 @@ create_minimal_filesystem() {
 }
 
 configure_init_script() {
+
   cat << 'EOF' > "$TOP_DIR/build/initramfs/busybox/init"
 #!/bin/sh
 
+# Enable verbose output for debugging
+set -x
+
+# Mount essential filesystems
 mount -t proc none /proc
 mount -t sysfs none /sys
 mount -t devtmpfs devtmpfs /dev
 
+# Check if /dev is mounted
+if mountpoint -q /dev; then
+  echo "/dev is mounted"
+else
+  echo "Failed to mount /dev"
+fi
+
 # Set up mdev for device management
-mdev -s
+#echo /sbin/mdev > /proc/sys/kernel/hotplug
+#mdev -s
 
 # Check if /dev/sda1 exists, if not, partition and format the disk
 if [ ! -b /dev/sda1 ]; then
@@ -78,7 +91,6 @@ mkdir /mnt
 mount /dev/sda1 /mnt
 
 # Create essential directories
-
 if [ -z "$FILESYSTEM" ]; then
   mkdir /mnt/bin
   mkdir /mnt/sbin
@@ -90,6 +102,11 @@ if [ -z "$FILESYSTEM" ]; then
   mkdir -p /mnt/usr/bin
   mkdir -p /mnt/usr/sbin
 
+  # Create basic device nodes in /mnt/dev
+  mknod -m 622 /mnt/dev/console c 5 1
+  mknod -m 666 /mnt/dev/null c 1 3
+  mknod -m 666 /mnt/dev/zero c 1 5
+  mknod -m 666 /mnt/dev/tty c 5 0
 
   # Copy BusyBox and create symlinks for common utilities
   cp /bin/busybox /mnt/bin/
@@ -102,19 +119,17 @@ if [ -z "$FILESYSTEM" ]; then
 
   # Create a basic inittab
   cat << 'EOFINITTAB' > /mnt/etc/inittab
-  ::sysinit:/bin/mount -t proc proc /proc
-  ::sysinit:/bin/mount -t sysfs sysfs /sys
-  ::sysinit:/bin/mount -t devtmpfs devtmpfs /dev
-
-  ::respawn:/bin/sh
-  ::askfirst:/bin/sh
-  ::ctrlaltdel:/bin/umount -a -r
-  ::shutdown:/bin/umount -a -r
+::sysinit:/bin/mount -t proc proc /proc
+::sysinit:/bin/mount -t sysfs sysfs /sys
+::sysinit:/bin/mount -t devtmpfs devtmpfs /dev
+::respawn:/bin/sh
+::askfirst:/bin/sh
+::ctrlaltdel:/bin/umount -a -r
+::shutdown:/bin/umount -a -r
 EOFINITTAB
 fi
 
-echo -e "\nhello world\n"
-exec /bin/sh
+exec switch_root /mnt /sbin/init
 
 EOF
   chmod +x $TOP_DIR/build/initramfs/busybox/init
@@ -154,13 +169,14 @@ create_emulated_disk_if_it_doesnt_exist() {
     fi
 }
 
-create_emulated_disk_if_it_doesnt_exist
+
 download_kernel_source
 download_busybox
 configure_and_build_busybox
+configure_and_build_kernel
+
+create_emulated_disk_if_it_doesnt_exist
 create_minimal_filesystem
 configure_init_script
 generate_initramfs
-configure_and_build_kernel
 execute_qemu_virtual_machine
-
