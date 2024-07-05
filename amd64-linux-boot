@@ -10,12 +10,14 @@ BUSYBOX_URL=https://busybox.net/downloads/busybox-$BUSYBOX_VERSION.tar.bz2
 TOP_DIR=$(pwd)
 
 download_kernel_source() {
+  cd $TOP_DIR
   wget $KERNEL_URL
   tar -xvf linux-$KERNEL_VERSION.tar.gz
   rm linux-$KERNEL_VERSION.tar.gz
 }
 
 download_busybox() {
+  cd $TOP_DIR
   wget $BUSYBOX_URL
   tar -xvf busybox-$BUSYBOX_VERSION.tar.bz2
   rm busybox-$BUSYBOX_VERSION.tar.bz2
@@ -129,6 +131,8 @@ if [ -z "$FILESYSTEM" ]; then
 EOFINITTAB
 fi
 
+echo -e "\nhello world\n"
+
 exec switch_root /mnt /sbin/init
 
 EOF
@@ -162,6 +166,7 @@ execute_qemu_virtual_machine() {
 }
 
 create_emulated_disk_if_it_doesnt_exist() {
+    cd $TOP_DIR
     if [ ! -f emudisk.qcow2 ]; then
         qemu-img create -f qcow2 emudisk.qcow2 512M 
     else
